@@ -45,7 +45,7 @@ MVP scope focuses on reliable end-to-end sensor data flow with zero data loss an
 - **Topic structure:**
   - `iot/{tenant_id}/{device_id}/sensors/{sensor_type}` — readings
   - `iot/{tenant_id}/{device_id}/status/heartbeat` — liveness + buffer depth (optional for MVP)
-- **Sequencing:** per-device monotonic `sequence_no`, included in every reading payload; resets on reimage (design detail: handled downstream via unique constraint including timestamp)
+- **Sequencing:** per-device monotonic `sequence_no`, included in every reading and heartbeat payload; resets on reimage (design detail: handled downstream via unique constraint including timestamp). T-1.2 clarification: the heartbeat contract adds a required `sequence_no` to the ADR-002 fields to satisfy R-EDGE-7, with the same deduplication purpose as reading sequence numbers. Heartbeat emission remains deferred.
 
 **Local buffer schema:**
 ```sql

@@ -6,7 +6,7 @@
 | **Version** | 1.0 |
 | **Date** | 2026-07-26 |
 | **Derived from** | `design.md` MVP v1.0 |
-| **Status** | In progress — T-1.1 done; 29 tasks pending |
+| **Status** | In progress — T-1.1 and T-1.2 done; 28 tasks pending |
 
 ---
 
@@ -23,7 +23,7 @@ Wave structure prioritizes parallelism: Wave 1 can start immediately; Wave 2 wai
 | ID | Task | Requirement(s) | Depends on | Status |
 |---|---|---|---|---|
 | T-1.1 | Define SQLite buffer schema (`sensor_readings` table) with WAL mode config in edge agent codebase | R-EDGE-1, R-EDGE-2 | — | done |
-| T-1.2 | Implement MQTT payload Pydantic schemas (reading, heartbeat) for topic validation | R-EDGE-1, R-EDGE-7 | — | pending |
+| T-1.2 | Implement MQTT payload Pydantic schemas (reading, heartbeat) for topic validation | R-EDGE-1, R-EDGE-7 | — | done |
 | T-1.3 | Provision RDS PostgreSQL instance (`db.t4g.micro`, Single-AZ, timescaledb extension enabled) | R-STO-1 | — | pending |
 | T-1.4 | Create Cognito User Pool (Essentials tier) with custom attribute `custom:tenant_id` | R-AUTH-1, R-TEN-3 | — | pending |
 | T-1.5 | Provision S3 bucket for frontend static assets + enable CloudFront access logging | R-FE-2 | — | pending |
@@ -102,19 +102,21 @@ Items in `design.md` § 4 (MVP-specific design decisions):
 
 | Wave | Total tasks | Done | In progress | Pending |
 |---|---|---|---|---|
-| 1 | 8 | 1 | 0 | 7 |
+| 1 | 8 | 2 | 0 | 6 |
 | 2 | 7 | 0 | 0 | 7 |
 | 3 | 7 | 0 | 0 | 7 |
 | 4 | 4 | 0 | 0 | 4 |
 | 5 | 4 | 0 | 0 | 4 |
-| **Total** | **30** | **1** | **0** | **29** |
+| **Total** | **30** | **2** | **0** | **28** |
 
 ---
 
 ## Next steps
 
+- T-1.2 complete: Pydantic reading and heartbeat contracts plus topic/payload matching implemented in `edge-agent/src/mqtt/schemas.py`. Approved clarification: heartbeats require `sequence_no` for the same deduplication purpose as readings (R-EDGE-7); recorded in design §2.1. Temporary validation probes passed for required fields, JSON round-trips, malformed payloads, topic mismatches, and SQLite reading compatibility. Sequence allocation remains T-2.2; heartbeat emission remains deferred.
+- T-2.1 is now unblocked by completion of T-1.1 and T-1.2. T-2.2 was already unblocked by T-1.1; both remain pending.
 - [ ] Assign owners to Wave 1 tasks (can start immediately, no blocking dependencies)
-- [ ] Assign owners to Wave 2 tasks (blocked on Wave 1 completion)
+- [ ] Assign owners to Wave 2 tasks as their listed dependencies complete (T-2.1 and T-2.2 are ready)
 - [ ] Update task status as work proceeds; do not let this file drift from actual repo state
 - [ ] On Wave 1 completion, kick off Waves 2–5 in sequence
 
