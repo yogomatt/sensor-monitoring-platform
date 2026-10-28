@@ -44,7 +44,8 @@ All architectural decisions are captured in ADR documents in `docs/adr/`:
 - **ADR-001**: Platform architecture overview (referenced, but file missing from this workspace)
 - **ADR-002**: Edge layer — MQTT topics, SQLite buffer, write-ahead pattern
 - **ADR-003**: Ingestion layer — drop Kinesis, MQTT QoS 1, deduplication strategy
-- **ADR-004**: Processing & storage — RDS vs Tiger Cloud, schema, alerting store, S3 naming
+- **ADR-004**: Historical processing & storage decision; superseded by ADR-008
+- **ADR-008**: Native RDS PostgreSQL partitions, manual purge, no compression/rollups; carries forward alerting store and S3 archive
 - **ADR-005**: API layer — FastAPI, Cognito, tenant scoping, WebSocket auth
 - **ADR-006**: Frontend — React vs Managed Grafana, CloudFront rationale
 - **ADR-007**: CI/CD — independent pipelines, rollback mechanisms, staged OTA
@@ -236,4 +237,4 @@ Shared roadmap and architecture docs belong in the workspace `docs/`. Increment 
 
 - Start with the workspace `README.md` and `docs/INCREMENTS.md` for navigation
 - Read `docs/INCREMENTS.md` for roadmap and success criteria
-- All ADRs are Accepted — treat as immutable unless explicitly superseding with a new ADR
+- ADR-004 is superseded by ADR-008; preserve historical ADR contents and use the current decision when implementing

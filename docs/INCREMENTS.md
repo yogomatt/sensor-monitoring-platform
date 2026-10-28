@@ -24,8 +24,8 @@ End-to-end sensor → dashboard pipeline with zero data loss. Focus on core reli
 **Key components:**
 1. **Edge Agent** — Python, SQLite buffer (WAL mode), write-ahead pattern, monotonic sequence numbers, MQTT QoS 1 publishing
 2. **AWS IoT Core + Rules Engine** — MQTT routing to Lambda ingestor
-3. **Lambda Ingestor** — Validates, normalizes, idempotent upsert to TimescaleDB with `(device_id, sequence_no, time)` dedup constraint
-4. **TimescaleDB (RDS)** — Single hypertable `sensor_readings`, 30-day retention, single-AZ, `db.t4g.micro`
+3. **Lambda Ingestor** — Validates, normalizes, idempotent upsert to PostgreSQL with `(device_id, sequence_no, time)` dedup constraint
+4. **PostgreSQL (RDS)** — Native 7-day partitions for `sensor_readings`, at least 30-day retention with manual purge (ADR-008), single-AZ, `db.t4g.micro`
 5. **FastAPI (ECS/Fargate)** — Simple JWT auth via Cognito, tenant-scoped queries, WebSocket live updates
 6. **React Dashboard** — CloudFront + S3 frontend, Cognito login, live chart via WebSocket
 7. **S3 Frontend Hosting** — CloudFront distribution, ACM certificate, SPA routing
@@ -50,29 +50,26 @@ End-to-end sensor → dashboard pipeline with zero data loss. Focus on core reli
 **Depends on:** Increment 1 (MVP) complete and stable
 
 **Scope:**
-Role-based access control, alerting, storage optimization, permanent data archive, cost reduction through aggregation.
+Role-based access control, alerting, rate limiting, and permanent raw data archive. Storage follows [ADR-008](adr/ADR-008-native-postgresql-storage.md): no compression or rollups; manual operational purge.
 
 **Key requirements in scope:**
 - R-ALERT-1, R-ALERT-2, R-ALERT-3
 - R-AUTH-2, R-AUTH-5
-- R-STO-2, R-STO-3, R-STO-4, R-STO-5
 - R-STO-6, R-STO-7 (S3 raw archive with Hive-style partitioning)
 
 **Key additions:**
 1. **Alerting Lambda** — Evaluates threshold rules on each inbound reading, dispatches SNS/SES notifications
 2. **`alert_rules` table** — Stores tenant-scoped threshold rules, no external rules engine
-3. **Continuous Aggregates** — 1-minute and 1-hour rollups, auto-refresh policies
-4. **Compression policy** — Chunks > 7 days old compressed via TimescaleDB native compression
-5. **S3 Raw Archive** — Separate write path via Rules Engine action, Hive-style `{tenant_id}/year=/month=/day=/hour=/` partitioning, lifecycle to Glacier Instant
-6. **FastAPI RBAC** — Owner/Admin/Viewer roles enforced via Cognito custom claims and FastAPI dependency injection
-7. **Rate Limiting** — slowapi in-memory limiter on API endpoints
+3. **S3 Raw Archive** — Separate write path via Rules Engine action, Hive-style `{tenant_id}/year=/month=/day=/hour=/` partitioning, lifecycle to Glacier Instant
+4. **FastAPI RBAC** — Owner/Admin/Viewer roles enforced via Cognito custom claims and FastAPI dependency injection
+5. **Rate Limiting** — slowapi in-memory limiter on API endpoints
 
-**Task count:** 31 tasks across 5 waves
-- Wave 1 (8 tasks): Schema (alert_rules, aggregates, compression), S3 archive, SNS/SES setup
+**Task count:** 24 active tasks across 5 waves; 7 storage optimization tasks retired by ADR-008
+- Wave 1 (5 tasks): Alert-rule schema, S3 archive, SNS/SES and Cognito setup
 - Wave 2 (5 tasks): Alerting Lambda, S3 action routing, RBAC dependency
-- Wave 3 (5 tasks): Query routing, rate limiter, alert CRUD endpoints
-- Wave 4 (5 tasks): Frontend enhancements (role display, alert UI, query routing, rate limit indicator)
-- Wave 5 (8 tasks): Integration testing, documentation
+- Wave 3 (4 tasks): Rate limiter, alert CRUD endpoints, authorization, deployment
+- Wave 4 (4 tasks): Frontend enhancements (role display, alert UI, rate limit indicator, deployment)
+- Wave 5 (6 tasks): Integration testing, documentation
 
 **Cost impact:** Minimal; reuses MVP infrastructure. S3 raw archive adds ~$2–3/month for 50 devices.
 
@@ -139,8 +136,8 @@ Safe OTA updates via staged rollouts, independent CI/CD pipelines, comprehensive
 | R-FLEET-1 through R-FLEET-4 | Fleet OTA | Fleet DevOps (3) |
 | R-ING-1, R-ING-2, R-ING-5 | Dedup ingestion | MVP (1) |
 | R-ING-3, R-ING-4 | Failure isolation | Fleet DevOps (3) tested |
-| R-STO-1 | 30-day raw retention | MVP (1) |
-| R-STO-2 through R-STO-5 | Aggregates, compression, cost optimization | Enterprise (2) |
+| R-STO-1 | At least 30-day raw retention; manual purge (ADR-008) | MVP (1) |
+| R-STO-2 through R-STO-5 | Retired by ADR-008; rollups and compression removed from final product | None |
 | R-STO-6, R-STO-7 | S3 raw archive | Enterprise (2) |
 | R-TEN-1 through R-TEN-3 | Multi-tenant isolation | MVP (1) |
 | R-AUTH-1 | Basic JWT auth | MVP (1) |
@@ -166,7 +163,8 @@ Safe OTA updates via staged rollouts, independent CI/CD pipelines, comprehensive
 5. **AWS-native services:** IoT Core, Greengrass, Cognito, ECS/Fargate, Lambda, RDS, S3, CloudFront (no third-party equivalents)
 6. **Staged rollouts, manual approval:** Greengrass stages at 10/50/100%; operator manually approves each stage
 7. **In-memory rate limiting:** slowapi on single Fargate task; Redis deferred indefinitely
-8. **Live end-to-end tests:** Tests use real AWS infrastructure, not mocks
+8. **Storage scope:** Native PostgreSQL partitioning; manual purge preserves at least 30 days. No compression or rollups in the final product. Automatic purging requires a future approved spec.
+9. **Live end-to-end tests:** Tests use real AWS infrastructure, not mocks
 
 ---
 
@@ -178,7 +176,7 @@ Increment 1 (MVP) — Weeks 1–6
   └─ Output: Stable end-to-end system, ~$54/month cost
 
     Increment 2 (Enterprise) — Weeks 7–10 (starts after MVP stable)
-      └─ Adds alerting, RBAC, cost optimization
+      └─ Adds alerting, RBAC, rate limiting, permanent archive
       └─ Output: Production-ready multi-tenant platform
 
         Increment 3 (Fleet DevOps) — Weeks 11–15 (starts after Enterprise stable)
@@ -203,8 +201,8 @@ Paths below are relative to the workspace root. See the [workspace guide](../REA
 
 /iot-sensor-enterprise/specs/
   ├─ requirements.md      (Enterprise requirements, depends on MVP)
-  ├─ design.md           (Enterprise additions: alerting, RBAC, S3, aggregates)
-  └─ tasks.md            (31 tasks, 5 waves)
+  ├─ design.md           (Enterprise additions: alerting, RBAC, S3, rate limiting)
+  └─ tasks.md            (24 active tasks, 5 waves; 7 retired IDs)
 
 /iot-sensor-fleet-devops/specs/
   ├─ requirements.md      (Fleet safety & DevOps requirements)
@@ -222,14 +220,14 @@ Paths below are relative to the workspace root. See the [workspace guide](../REA
 ## Success Criteria
 
 **Increment 1 (MVP) complete when:**
-- Edge → MQTT → ingestor → TimescaleDB → REST/WebSocket → dashboard works end-to-end
+- Edge → MQTT → ingestor → PostgreSQL → REST/WebSocket → dashboard works end-to-end
 - Zero data loss test passes (network failure scenario)
 - Dashboard displays live readings in real-time
 
 **Increment 2 (Enterprise) complete when:**
 - RBAC enforced (Viewer/Admin/Owner roles work)
 - Alerting fires on threshold crossing, dispatches SNS/SES
-- Continuous aggregates populated and queries route correctly (7d+ requests use rollups)
+- Authorized readings queries continue to use retained raw data
 - S3 raw archive receives every reading in Hive-partitioned format
 
 **Increment 3 (Fleet DevOps) complete when:**

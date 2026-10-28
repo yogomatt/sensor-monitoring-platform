@@ -3,10 +3,12 @@
 | Field | Value |
 |---|---|
 | **Spec type** | Feature Spec (Increment 1: MVP) — Design phase |
-| **Version** | 1.0 |
-| **Date** | 2026-07-26 |
-| **Derived from** | `requirements.md` MVP v1.0 |
+| **Version** | 1.1 |
+| **Date** | 2026-09-23 |
+| **Derived from** | `requirements.md` MVP v1.1 |
 | **Status** | Scope locked; architecture ready for implementation |
+
+Storage scope follows [ADR-008](../../docs/adr/ADR-008-native-postgresql-storage.md): native PostgreSQL partitioning, manual purging, no compression or rollups in any increment.
 
 ---
 
@@ -19,7 +21,7 @@
                                      ↙        │         ↘
                           [Lambda Ingestor] [S3 Raw] [Future: Alerting]
                                      │
-                          [TimescaleDB on RDS]
+                          [PostgreSQL on RDS]
                                      │
                           [FastAPI on ECS/Fargate]
                                      │
@@ -79,7 +81,7 @@ PRAGMA journal_mode = WAL;
 **Requirements addressed:** R-ING-2, R-ING-5, R-STO-1, R-TEN-1
 
 - AWS IoT Core Routes inbound messages to a Lambda ingestor via IoT Rules Engine
-- Lambda validates payload, normalizes schema, performs idempotent upsert into TimescaleDB
+- Lambda validates payload, normalizes schema, performs idempotent upsert into PostgreSQL
 - Dedup strategy: unique constraint on `(device_id, sequence_no, time)` at the database layer
   - `time` is included so that a device reset (sequence_no restarts) cannot collide with old historical data
 
@@ -92,16 +94,16 @@ VALUES (...)
 ON CONFLICT (device_id, sequence_no, time) DO NOTHING;
 ```
 
-**MVP scope:** Single ingestor Lambda; no fan-out to separate alerting or S3 paths yet (S3 raw archive deferred to Increment 2). Ingestor failure = data not in TimescaleDB but *will* be replayed by edge on reconnect.
+**MVP scope:** Single ingestor Lambda; no fan-out to separate alerting or S3 paths yet (S3 raw archive deferred to Increment 2). Ingestor failure = data not in PostgreSQL but *will* be replayed by edge on reconnect.
 
 ### 2.4 Time-series storage (MVP)
 **Requirements addressed:** R-STO-1, R-TEN-1, R-TEN-2
 
-- TimescaleDB on RDS PostgreSQL, `db.t4g.micro`, Single-AZ
-- One table: `sensor_readings` (hypertable with time partitioning)
+- RDS PostgreSQL 15, `db.t4g.micro`, Single-AZ
+- One table: `sensor_readings`, natively partitioned by `RANGE (time)` into 7-day UTC intervals
 - One table: `devices` (device registry, scoped by tenant_id)
-- Retention policy: raw sensor readings kept for 30 days, auto-purged after
-- No continuous aggregates yet (no rollups for MVP; full raw data for small device count)
+- Raw sensor readings retained for at least 30 days from device reading time; manual purge only. Data remains until the operator explicitly removes it.
+- No compression or rollups in the MVP or final product (ADR-008). Queries use retained raw readings.
 
 **Schema (MVP):**
 ```sql
@@ -112,27 +114,33 @@ CREATE TABLE devices (
     created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Create hypertable
+-- Native time partitioning; reading columns follow ADR-008 / ADR-004
 CREATE TABLE sensor_readings (
-    time TIMESTAMP NOT NULL,
+    time TIMESTAMPTZ NOT NULL,
     device_id TEXT NOT NULL,
     tenant_id TEXT NOT NULL,
     sensor_type TEXT NOT NULL,
-    value REAL NOT NULL,
-    sequence_no INTEGER NOT NULL
-);
+    value DOUBLE PRECISION NOT NULL,
+    unit TEXT NOT NULL,
+    sequence_no BIGINT NOT NULL
+) PARTITION BY RANGE (time);
 
-SELECT create_hypertable('sensor_readings', 'time', if_not_exists => TRUE);
+-- Example interval; provision intervals covering actual ingest/replay timestamps.
+CREATE TABLE sensor_readings_20260921 PARTITION OF sensor_readings
+    FOR VALUES FROM ('2026-09-21 00:00:00+00')
+               TO ('2026-09-28 00:00:00+00');
 
 -- Unique constraint for dedup
 ALTER TABLE sensor_readings ADD CONSTRAINT uq_device_seq 
   UNIQUE (device_id, sequence_no, time);
 
--- Retention policy
-SELECT add_retention_policy('sensor_readings', INTERVAL '30 days');
+CREATE INDEX ON sensor_readings (tenant_id, device_id, time DESC);
+CREATE INDEX ON sensor_readings (tenant_id, sensor_type, time DESC);
 ```
 
-**MVP scope:** No compression, no aggregates, no alert_rules table. Simple schema for raw data only.
+**Partition operations:** T-2.4 supplies partition creation for current, future, and replay time ranges. Provision partitions before accepting their timestamps; do not discard a reading on a missing-partition error. Partition creation does not authorize deletion. T-2.6 documents operator checks and manual purge: remove a partition only when its upper bound is at or before the 30-day cutoff. Weekly partitions may retain up to almost 7 extra days; without a manual purge, retention is unbounded. No scheduled deletion, retention extension, or purge job is installed.
+
+**MVP scope:** No alert_rules table yet. Compression and rollups are removed from all increments; automatic purging requires a future approved specification.
 
 ### 2.5 API service (MVP)
 **Requirements addressed:** R-TEN-2, R-TEN-3, R-AUTH-1
@@ -176,7 +184,7 @@ async def get_readings(
 **Requirements addressed:** R-FE-4
 
 - WebSocket endpoint at `/ws/updates` accepts JWT as query parameter (browsers cannot set custom headers on WS handshake)
-- On new readings in TimescaleDB, AsyncIO task publishes to connected WebSocket clients
+- On new readings in PostgreSQL, AsyncIO task publishes to connected WebSocket clients
 - Scoped by tenant: client only receives readings from devices in their tenant
 
 **MVP scope:** In-memory client registry (single Fargate task); no Redis pub/sub or multi-task broadcasting (deferred to scale-up).
@@ -203,7 +211,7 @@ Infrastructure provisioned manually or via CDK (state tracking only; no automate
 - **IoT Core:** MQTT endpoint, X.509 cert registry, topic-based ACLs
 - **IoT Rules Engine:** route `iot/{tenant_id}/{device_id}/sensors/*` to Lambda ingestor
 - **Lambda:** ingestor function (Python runtime, sync trigger on Rules Engine)
-- **RDS:** PostgreSQL 15 with TimescaleDB extension, `db.t4g.micro`, Single-AZ, public subnet for simplicity
+- **RDS:** PostgreSQL 15 with native range partitioning (no TimescaleDB extension), `db.t4g.micro`, Single-AZ, public subnet for simplicity
 - **S3:** one bucket for frontend static assets (raw archive deferred to Increment 2)
 - **CloudFront:** distribution pointing to S3, ACM certificate, custom domain
 - **Cognito:** User Pool with custom attribute `custom:tenant_id`
@@ -216,7 +224,7 @@ Infrastructure provisioned manually or via CDK (state tracking only; no automate
 ```
 1. Sensor read → SQLite write (published_at = NULL)                    [R-EDGE-1]
 2. SQLite → MQTT publish attempt (QoS 1)                                [R-EDGE-1, R-ING-1]
-3. IoT Core → Rules Engine → Lambda ingestor → TimescaleDB upsert      [R-ING-2, R-ING-5]
+3. IoT Core → Rules Engine → Lambda ingestor → PostgreSQL upsert      [R-ING-2, R-ING-5]
 4. Dashboard REST → FastAPI (JWT bearer) → tenant-scoped query         [R-TEN-2, R-AUTH-1]
 5. Dashboard WebSocket (JWT query param) → FastAPI → live push         [R-FE-4]
 ```
@@ -232,7 +240,7 @@ Infrastructure provisioned manually or via CDK (state tracking only; no automate
 ## 4. Design decisions specific to MVP
 
 **Decision 1: No continuous aggregates or rollups**
-- Justification: 10 devices at ~1 reading/min = ~14,400 rows/day. 30-day retention = ~432K rows in Postgres. Query latency on 1 million rows is negligible for MVP scale. Avoid complexity until needed.
+- ADR-008 removes compression and rollups from the final product. Measure query latency and storage growth with retained raw data; manual purging makes 30 days a minimum, not a storage bound. No fixed performance or compression saving is assumed.
 
 **Decision 2: Ingestor-only ingestion path (no S3 fan-out yet)**
 - Justification: Simpler Rules Engine config; no race condition between Lambda and S3 write. S3 raw archive (permanent audit trail) added in Increment 2 after MVP validation.

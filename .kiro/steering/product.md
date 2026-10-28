@@ -22,8 +22,8 @@ An IoT sensor monitoring platform that collects readings from Raspberry Pi edge 
 
 The platform is built in three independent increments:
 
-- **Increment 1 (MVP)**: End-to-end sensor → dashboard pipeline with 30-day storage
-- **Increment 2 (Enterprise)**: Adds alerting, RBAC, data retention/compression, permanent archive
+- **Increment 1 (MVP)**: End-to-end sensor → dashboard pipeline with at least 30-day raw storage and manual purge
+- **Increment 2 (Enterprise)**: Adds alerting, RBAC, rate limiting, permanent archive
 - **Increment 3 (Fleet DevOps)**: Staged OTA updates, CI/CD pipelines, comprehensive testing
 
 ## Target Scale at Launch
@@ -38,6 +38,7 @@ The platform is built in three independent increments:
 
 - **AWS-native first**: Prefer managed AWS services over third-party equivalents
 - **Architectural coherence**: Keep all components in the same ecosystem
+- **Storage simplicity**: Native PostgreSQL partitions and manual purging; compression and rollups removed from the final product (ADR-008). Automatic purging only under a future approved spec if needed
 - **Incremental complexity**: Don't add infrastructure until a documented trigger is reached
 - **Crash safety**: Write-ahead patterns for all data capture
 - **Tenant isolation**: Application-layer scoping, not database-level RLS (at launch scale)

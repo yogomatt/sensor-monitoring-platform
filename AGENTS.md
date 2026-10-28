@@ -4,7 +4,7 @@
 
 A multi-tenant IoT platform that collects sensor readings from Raspberry Pi edge devices and displays them on real-time dashboards. The system guarantees zero data loss during network outages using a write-ahead SQLite buffer pattern.
 
-**Key flow:** Edge devices → AWS IoT Core (MQTT) → Lambda → TimescaleDB → FastAPI → React Dashboard
+**Key flow:** Edge devices → AWS IoT Core (MQTT) → Lambda → PostgreSQL → FastAPI → React Dashboard
 
 ## Your Role as an AI Agent
 
@@ -50,6 +50,8 @@ docs/adr/ADR-*.md            # Shared architecture decisions (read-only)
 
 ## Current Status
 
+Storage follows [ADR-008](docs/adr/ADR-008-native-postgresql-storage.md), which supersedes ADR-004: native PostgreSQL partitioning, manual purge preserving at least 30 days, no compression or rollups in the final product. Automatic purging requires a future approved spec.
+
 - Refer to [MVP tasks](iot-sensor-mvp/specs/tasks.md).
 
 ## Key Technologies
@@ -59,7 +61,7 @@ docs/adr/ADR-*.md            # Shared architecture decisions (read-only)
 | Edge | Python + SQLite WAL | Write-ahead pattern for crash safety |
 | MQTT | AWS IoT Core | AWS-native, no separate broker needed |
 | Ingestion | Lambda | Serverless, auto-scaling |
-| Storage | TimescaleDB on RDS | Time-series optimization, PostgreSQL compatibility |
+| Storage | PostgreSQL on RDS | Native time partitions, manual purge (ADR-008) |
 | API | FastAPI on Fargate | Async Python, WebSocket support |
 | Frontend | React + CloudFront | SPA with CDN distribution |
 | Auth | Cognito | AWS-native JWT provider |
@@ -101,9 +103,9 @@ npm install
 npm run build  # NOT npm run dev (no dev servers in prod)
 aws s3 sync build/ s3://<bucket>/
 
-# Database (TimescaleDB)
+# Database (PostgreSQL)
 psql -h <rds-endpoint> -U postgres -d iot_platform
-SELECT create_hypertable('sensor_readings', 'time', chunk_time_interval => INTERVAL '7 days');
+SELECT * FROM pg_partition_tree('sensor_readings');
 ```
 
 ## Success Metrics
@@ -124,3 +126,34 @@ Your work is successful when:
 ---
 
 **Remember:** You're implementing a well-specified system, not designing one. When in doubt, follow the spec.
+
+<!-- BEGIN AWS Agent Toolkit rules -->
+# AWS Guidance
+
+- Where these AWS rules conflict with the project's own instructions, the
+  project's instructions take precedence.
+- Prefer the AWS MCP Server for AWS interactions — it provides sandboxed
+  execution, observability, and audit logging. If unavailable, use the
+  AWS CLI directly.
+- Before starting a task, check whether a relevant AWS skill is available.
+  Load the skill with `retrieve_skill` and prefer its guidance over
+  general knowledge.
+- When uncertain about specific AWS details (API parameters, permissions,
+  limits, error codes), verify against documentation rather than guessing.
+  State uncertainty explicitly if you cannot confirm.
+- When creating infrastructure, prefer infrastructure-as-code (AWS CDK or
+  CloudFormation) over direct CLI commands.
+- When working with infrastructure, follow AWS Well-Architected Framework
+  principles.
+- Do not use em dashes in AWS resource names or descriptions. Use
+  hyphens instead.
+
+## Secret Safety
+
+- MUST load the `aws-secrets-manager` skill first for any secret,
+  credential, API key, token, or password task. MUST NOT call
+  `secretsmanager get-secret-value` or `batch-get-secret-value`, and MUST
+  NOT hit the Secrets Manager Agent daemon directly. MUST use
+  `{{resolve:secretsmanager:secret-id:SecretString:json-key}}` with
+  `asm-exec` so the secret resolves at runtime without entering context.
+<!-- END AWS Agent Toolkit rules -->

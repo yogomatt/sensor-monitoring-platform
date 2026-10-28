@@ -5,7 +5,7 @@ This workspace holds shared architecture decisions, three delivery increments, a
 | Project | Scope | Documentation |
 |---|---|---|
 | MVP | Core sensor → dashboard pipeline | [Project guide](iot-sensor-mvp/README.md) |
-| Enterprise | Alerting, RBAC, retention, archive | [Project guide](iot-sensor-enterprise/README.md) |
+| Enterprise | Alerting, RBAC, rate limiting, archive | [Project guide](iot-sensor-enterprise/README.md) |
 | Fleet & DevOps | OTA, CI/CD, testing, operations | [Project guide](iot-sensor-fleet-devops/README.md) |
 
 Shared documents live in [docs/](docs/README.md): the [roadmap](docs/INCREMENTS.md) and [architecture decisions](docs/adr/README.md). Original consolidated specs are preserved in [the archive](docs/archive/README.md).

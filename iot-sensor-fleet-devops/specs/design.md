@@ -3,11 +3,13 @@
 | Field | Value |
 |---|---|
 | **Spec type** | Feature Spec (Increment 3: Fleet Safety & DevOps) — Design phase |
-| **Version** | 1.0 |
-| **Date** | 2026-07-26 |
-| **Derived from** | `requirements.md` Fleet Safety & DevOps v1.0 |
+| **Version** | 1.1 |
+| **Date** | 2026-09-23 |
+| **Derived from** | `requirements.md` Fleet Safety & DevOps v1.1 |
 | **Depends on** | Increments 1 (MVP) and 2 (Enterprise) design.md and implementation complete |
 | **Status** | Scope locked; builds on MVP and Enterprise architecture |
+
+Storage scope follows [ADR-008](../../docs/adr/ADR-008-native-postgresql-storage.md): native PostgreSQL partitioning, manual purging, no compression or rollups in any increment.
 
 ---
 
@@ -170,7 +172,7 @@ CDK project (TypeScript) in a separate repo, version-controlled:
 
 **CDK stacks:**
 1. **Networking stack:** VPC, subnets, security groups, ALB
-2. **Database stack:** RDS PostgreSQL with TimescaleDB, subnet groups
+2. **Database stack:** RDS PostgreSQL with native time partitioning, subnet groups (ADR-008); no compression, rollups, or automatic purge jobs
 3. **Compute stack:** ECS cluster, Fargate service, IAM roles, task definitions
 4. **Storage stack:** S3 buckets (frontend, raw archive), CloudFront distribution
 5. **Auth stack:** Cognito User Pool, app client, domain
@@ -208,7 +210,7 @@ async def test_network_severing_and_replay():
     # 2. Kill MQTT connectivity mid-cycle (after 5 readings)
     # 3. Edge continues buffering for 30 sec (15 more readings queued)
     # 4. Restore connectivity
-    # 5. Verify all 25 readings in TimescaleDB in chronological order
+    # 5. Verify all 25 readings in PostgreSQL in chronological order
     # 6. Verify zero duplicates (upsert constraint)
 
 # T-2: Tenant isolation
@@ -227,7 +229,7 @@ async def test_ingestor_lambda_failure_doesnt_block_s3():
     """Verify S3 raw archive still receives data if ingestor fails."""
     # 1. Deploy ingestor Lambda that fails after 100 invocations
     # 2. Send 150 readings
-    # 3. Verify first 100 in TimescaleDB, next 50 in S3 only (not in DB)
+    # 3. Verify first 100 in PostgreSQL, next 50 in S3 only (not in DB)
 
 # T-4: Device reimage (sequence_no reset)
 @pytest.mark.e2e
@@ -344,7 +346,7 @@ async def test_rollback_procedures_work():
 
 ### Verification:
 - `aws logs tail /aws/lambda/ingestor --follow` shows no errors
-- TimescaleDB insert count remains stable
+- PostgreSQL insert count remains stable
 - S3 raw archive object count increasing
 ```
 
@@ -441,7 +443,7 @@ Increment 3 adds operational controls (CI/CD, testing, rollback) but does not ch
 ```
 1. Edge → MQTT → IoT Core
 2. IoT Core → Rules Engine → Lambda ingestor, S3 raw, Alerting Lambda
-3. FastAPI → TimescaleDB + cache
+3. FastAPI → PostgreSQL + cache
 4. Dashboard → WebSocket/REST
 ```
 
