@@ -4,7 +4,8 @@ These shared decisions apply across the delivery increments. Preserve accepted A
 
 - [ADR-006-frontend](ADR-006-frontend.md)
 - [ADR-002-edge-mqtt-sqlite](ADR-002-edge-mqtt-sqlite.md)
-- [ADR-004-processing-storage](ADR-004-processing-storage.md)
+- [ADR-004-processing-storage](ADR-004-processing-storage.md) — superseded by ADR-008; preserved for historical reference
+- [ADR-008-native-postgresql-storage](ADR-008-native-postgresql-storage.md) — accepted; native partitions, manual purge, no compression or rollups
 - [ADR-005-api-layer](ADR-005-api-layer.md)
 - [ADR-007-cicd](ADR-007-cicd.md)
 - [ADR-003-ingestion-kinesis-qos-dedup](ADR-003-ingestion-kinesis-qos-dedup.md)

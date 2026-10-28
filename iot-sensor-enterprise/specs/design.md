@@ -3,11 +3,13 @@
 | Field | Value |
 |---|---|
 | **Spec type** | Feature Spec (Increment 2: Enterprise) — Design phase |
-| **Version** | 1.0 |
-| **Date** | 2026-07-26 |
-| **Derived from** | `requirements.md` Enterprise v1.0 |
+| **Version** | 1.1 |
+| **Date** | 2026-09-23 |
+| **Derived from** | `requirements.md` Enterprise v1.1 |
 | **Depends on** | Increment 1 (MVP) design.md and implementation complete |
 | **Status** | Scope locked; builds on MVP architecture |
+
+Storage scope follows [ADR-008](../../docs/adr/ADR-008-native-postgresql-storage.md): native PostgreSQL partitioning, manual purging, no compression or rollups in any increment.
 
 ---
 
@@ -16,7 +18,6 @@
 Builds on MVP architecture; adds:
 - **Alerting Lambda** triggered by inbound readings and error events
 - **S3 raw archive** with Hive-style partitioning (independent write path from IoT Rules Engine)
-- **Continuous aggregates** for 1-min and 1-hour rollups
 - **FastAPI authorization dependency** enforcing Owner/Admin/Viewer roles
 - **slowapi rate limiter** integrated on API endpoints
 
@@ -27,10 +28,8 @@ Builds on MVP architecture; adds:
                                      ↙        │         ↘
                           [Lambda Ingestor] [S3 Raw] [Alerting Lambda]
                                      │         │           │
-                          [TimescaleDB on RDS] ←─────────────┘
-                          ├─ raw (30d)
-                          ├─ 1-min rollup (365d)
-                          └─ 1-hour rollup (forever)
+                          [PostgreSQL on RDS] ←─────────────┘
+                          └─ raw (at least 30d; manual purge)
                                      │
                           [FastAPI on ECS/Fargate]
                             (with RBAC + rate limit)
@@ -38,7 +37,7 @@ Builds on MVP architecture; adds:
                           [React Dashboard via CloudFront]
 ```
 
-Satisfies: R-ALERT-1, R-ALERT-2, R-ALERT-3, R-AUTH-2, R-AUTH-5, R-STO-2, R-STO-3, R-STO-4, R-STO-5, R-STO-6, R-STO-7
+Satisfies: R-ALERT-1, R-ALERT-2, R-ALERT-3, R-AUTH-2, R-AUTH-5, R-STO-6, R-STO-7
 
 ---
 
@@ -197,95 +196,22 @@ WHERE tenant_id = 'acme-corp'
 
 Hive-style partitioning means `MSCK REPAIR TABLE` is not required; Athena auto-discovers partition structure.
 
-**Design decision — independent write path:** S3 raw write happens via Rules Engine action, not through ingestor Lambda. This isolates the two paths: if ingestor Lambda fails, raw data still arrives in S3; if S3 write fails, ingestor can still update TimescaleDB. Increases operational resilience at the cost of slightly higher compute (two Lambda invocations per message, but Rules Engine is per-read cost-neutral).
+**Design decision — independent write path:** S3 raw write happens via Rules Engine action, not through ingestor Lambda. This isolates the two paths: if ingestor Lambda fails, raw data still arrives in S3; if S3 write fails, ingestor can still update PostgreSQL. Increases operational resilience at the cost of slightly higher compute (two Lambda invocations per message, but Rules Engine is per-read cost-neutral).
 
-### 2.5 Continuous aggregates (rollups)
-**Requirements addressed:** R-STO-2, R-STO-3, R-STO-4
+### 2.5 Raw-reading queries
+**Requirements addressed:** inherited R-STO-1, R-TEN-2
 
-Two continuous aggregates created on `sensor_readings` hypertable:
+All dashboard time ranges query retained `sensor_readings` with tenant, device, and time filters and pagination. No rollup tables or time-span-based table routing exist. Data manually purged from RDS is no longer available through the readings API; the independent S3 archive is not an automatic API fallback.
 
-**1-minute rollup:**
-```sql
-CREATE MATERIALIZED VIEW sensor_readings_1min
-WITH (timescaledb.continuous) AS
-SELECT
-  time_bucket('1 minute', time) AS bucket,
-  device_id,
-  tenant_id,
-  sensor_type,
-  AVG(value) AS avg_value,
-  MIN(value) AS min_value,
-  MAX(value) AS max_value,
-  COUNT(*) AS reading_count
-FROM sensor_readings
-GROUP BY 1, 2, 3, 4;
+### 2.6 Manual operational purge
+**Requirements addressed:** inherited R-STO-1
 
-SELECT add_continuous_aggregate_policy(
-  'sensor_readings_1min',
-  start_offset => INTERVAL '30 min',
-  end_offset => INTERVAL '1 min',
-  schedule_interval => INTERVAL '1 min'
-);
-
--- Retention: 365 days
-SELECT add_retention_policy('sensor_readings_1min', INTERVAL '365 days');
-```
-
-**1-hour rollup:**
-```sql
-CREATE MATERIALIZED VIEW sensor_readings_1hour
-WITH (timescaledb.continuous) AS
-SELECT
-  time_bucket('1 hour', time) AS bucket,
-  device_id,
-  tenant_id,
-  sensor_type,
-  AVG(value) AS avg_value,
-  MIN(value) AS min_value,
-  MAX(value) AS max_value,
-  COUNT(*) AS reading_count
-FROM sensor_readings
-GROUP BY 1, 2, 3, 4;
-
-SELECT add_continuous_aggregate_policy(
-  'sensor_readings_1hour',
-  start_offset => INTERVAL '2 hours',
-  end_offset => INTERVAL '1 hour',
-  schedule_interval => INTERVAL '1 hour'
-);
-
--- Retention: FOREVER (no policy)
-```
-
-**Dashboard query routing:**
-- Request for last 7 days → query raw `sensor_readings`
-- Request for 30–365 days → query `sensor_readings_1min`
-- Request for > 365 days → query `sensor_readings_1hour`
-
-This keeps query latency flat as data accumulates.
-
-### 2.6 Compression policy
-**Requirements addressed:** R-STO-5
-
-TimescaleDB native compression on raw `sensor_readings`:
-```sql
-ALTER TABLE sensor_readings SET (
-  timescaledb.compress = TRUE,
-  timescaledb.compress_segmentby = 'tenant_id, device_id, sensor_type'
-);
-
-SELECT add_compression_policy(
-  'sensor_readings',
-  compress_after => INTERVAL '7 days'
-);
-```
-
-Chunks older than 7 days are automatically compressed. Compression ratio typically 10:1 on time-series data. After compression, chunks are read-only; new data goes into uncompressed chunks.
+Follow the MVP manual partition purge procedure and ADR-008. No compression, scheduled purge, or aggregate maintenance jobs are introduced. Measure raw-data query performance and storage growth before considering any separately specified purge automation.
 
 ### 2.7 FastAPI endpoint additions
-**Requirements addressed:** R-AUTH-2, R-STO-4
+**Requirements addressed:** R-ALERT-1, R-AUTH-2, inherited R-TEN-2
 
-New endpoints for alert rule CRUD and query routing:
+Alert rule CRUD and retained raw-reading queries:
 
 ```python
 @app.post("/api/v1/alert-rules")
@@ -304,15 +230,8 @@ async def get_readings(
     end_time: str,
     tenant_id: str = Depends(get_current_tenant)
 ):
-    # Query routing: if span > 7 days, use rollup table
-    span_days = (parse_datetime(end_time) - parse_datetime(start_time)).days
-    
-    if span_days > 7:
-        table = 'sensor_readings_1min' if span_days <= 365 else 'sensor_readings_1hour'
-    else:
-        table = 'sensor_readings'
-    
-    return db.query_readings(table, tenant_id, device_id, start_time, end_time)
+    # Query retained raw readings with tenant/time filters and pagination.
+    return db.query_readings('sensor_readings', tenant_id, device_id, start_time, end_time)
 ```
 
 ---
@@ -323,17 +242,17 @@ async def get_readings(
 1. Sensor read → SQLite write (published_at = NULL)                    [MVP]
 2. SQLite → MQTT publish attempt (QoS 1)                                [MVP]
 3. IoT Core → Rules Engine → fan-out:
-     a. → Lambda ingestor → TimescaleDB upsert                         [MVP]
+     a. → Lambda ingestor → PostgreSQL upsert                         [MVP]
      b. → S3 raw write (Hive-partitioned)                              [NEW: R-STO-6, R-STO-7]
      c. → Alerting Lambda → evaluate alert_rules → SNS/SES dispatch   [NEW: R-ALERT-2]
 4. Dashboard → FastAPI (JWT bearer, role-checked, rate-limited) →     [NEW: R-AUTH-2, R-AUTH-5]
-     query routing (raw vs. 1-min vs. 1-hour rollup)                   [NEW: R-STO-4]
+     tenant-scoped, paginated raw-reading query                     [MVP: R-TEN-2]
 5. Dashboard WebSocket → live push (role-scoped)                       [MVP with new role filtering]
 ```
 
 **Failure modes (Increment 2):**
-- Alerting Lambda fails: readings still in S3 raw archive and TimescaleDB; alerts are dropped (not retried)
-- S3 raw write fails: readings in TimescaleDB but missing from archive; eventual consistency (data reappears if S3 recovers)
+- Alerting Lambda fails: readings still in S3 raw archive and PostgreSQL; alerts are dropped (not retried)
+- S3 raw write fails: readings in PostgreSQL but missing from archive; eventual consistency (data reappears if S3 recovers)
 - Slowapi limiter full: return 429 Too Many Requests; client backs off
 
 ---
@@ -343,8 +262,8 @@ async def get_readings(
 **Decision 1: Independent S3 write path**
 - Justification: Isolation of concerns. Ingestor Lambda failure cannot cause data loss in S3 archive. Operational independence enables easier troubleshooting.
 
-**Decision 2: Continuous aggregates instead of scheduled batch jobs**
-- Justification: TimescaleDB aggregates are auto-maintained; no separate cron jobs or ETL service. Operational simplicity.
+**Decision 2: Raw readings and manual purging**
+- ADR-008 removes rollups and compression from the final product. Keep direct raw-reading queries and manual operational purging while measuring performance; automatic purging is outside current scope.
 
 **Decision 3: Alerting Lambda on every reading (not scheduled)**
 - Justification: Near-real-time alerts (within few hundred ms). Scheduled evaluation adds latency and complexity. Cost is linear with reading volume, acceptable at launch scale.

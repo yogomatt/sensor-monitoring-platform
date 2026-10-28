@@ -7,6 +7,7 @@ Start here. Later increments remain deferred until this increment is complete an
 - [Requirements](specs/requirements.md): increment scope and requirement IDs.
 - [Design](specs/design.md): component behavior and architecture.
 - [Tasks](specs/tasks.md): dependencies and current implementation progress.
+- [Infrastructure](infrastructure/README.md): RDS provisioning request and verification steps (T-1.3).
 - [Shared ADRs](../docs/adr/README.md): architectural rationale.
 
 Keep increment specifications in `specs/` and implementation documentation with its owning component.

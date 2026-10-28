@@ -3,12 +3,14 @@
 | Field | Value |
 |---|---|
 | **Spec type** | Feature Spec (Increment 2: Enterprise) |
-| **Version** | 1.0 |
-| **Date** | 2026-07-26 |
-| **Scope** | RBAC, alerts, cost optimization, data retention policies |
+| **Version** | 1.1 |
+| **Date** | 2026-09-23 |
+| **Scope** | RBAC, alerts, rate limiting, permanent raw archive |
 | **Owner** | Yogo (product owner) |
 | **Notation** | EARS (Easy Approach to Requirements Syntax) |
 | **Status** | In scope for Increment 2; builds on MVP (Increment 1) |
+
+Storage scope follows [ADR-008](../../docs/adr/ADR-008-native-postgresql-storage.md): native PostgreSQL partitioning, manual purging, no compression or rollups in any increment.
 
 ---
 
@@ -20,7 +22,7 @@ Each requirement follows EARS pattern. Increment 2 adds multi-tenant features an
 
 ## Epic 1 — Role-based access control (API)
 
-**User story:** As a tenant admin, I want to assign different permission levels to my team so that operators can view data but cannot modify alert rules, and viewers cannot see raw readings.
+**User story:** As a tenant admin, I want to assign different permission levels to my team so that operators can view data but cannot modify alert rules, and viewers have read-only access to retained readings.
 
 | ID | Requirement | Notes |
 |---|---|---|
@@ -37,16 +39,11 @@ Each requirement follows EARS pattern. Increment 2 adds multi-tenant features an
 | R-ALERT-2 | WHEN an inbound reading matches an active alert rule THE SYSTEM SHALL dispatch a notification via the rule's configured channel | SNS for SMS, SES for email; Lambda evaluates rules on each inbound reading |
 | R-ALERT-3 | THE SYSTEM SHALL evaluate alert rules without introducing a second, separate data store from the primary operational database | alert_rules table in same RDS; no external rules engine |
 
-## Epic 3 — Time-series storage optimization & retention (Processing/Storage)
+## Epic 3 — Retired storage optimization scope
 
-**User story:** As a platform operator, I want queries to remain fast as data accumulates, and I want to optimize storage cost by aggregating old data.
+[ADR-008](../../docs/adr/ADR-008-native-postgresql-storage.md) removes R-STO-2 (1-minute rollups), R-STO-3 (1-hour rollups), R-STO-4 (rollup query routing), and R-STO-5 (compression) from the final product. These IDs are retired and must not be reused. They are not deferred deliverables.
 
-| ID | Requirement | Notes |
-|---|---|---|
-| R-STO-2 | THE SYSTEM SHALL retain 1-minute aggregated rollups for at least 365 days | TimescaleDB continuous aggregate; auto-refresh |
-| R-STO-3 | THE SYSTEM SHALL retain 1-hour aggregated rollups indefinitely | Permanent archive rollup for long-term trend analysis |
-| R-STO-4 | WHEN a dashboard requests a chart spanning more than 7 days THE SYSTEM SHALL serve the request from a pre-aggregated rollup rather than scanning raw data | Query logic routes to rollup tables; reduces scan cost |
-| R-STO-5 | THE SYSTEM SHALL compress raw sensor chunks older than 7 days | TimescaleDB native compression policy; segment by tenant/device/sensor |
+Operational storage inherits MVP R-STO-1: retain raw readings for at least 30 days, with operator-initiated purge only. Automatic purging is a possible future feature requiring a new approved spec.
 
 ## Epic 4 — Raw data archive (Storage)
 
@@ -63,7 +60,7 @@ Each requirement follows EARS pattern. Increment 2 adds multi-tenant features an
 
 | ID | Requirement | Notes |
 |---|---|---|
-| R-NFR-4 | THE SYSTEM SHALL support scaling to at least 50 devices and approximately 700 tenants without requiring a redesign of the storage or auth layers | Continuous aggregates keep query latency flat; application-layer tenant isolation efficient |
+| R-NFR-4 | THE SYSTEM SHALL support scaling to at least 50 devices and approximately 700 tenants without requiring a redesign of the storage or auth layers | ADR-008; validate indexed raw-data queries under measured load and retained volume; retain application-layer tenant isolation |
 
 ---
 
@@ -83,7 +80,7 @@ All Increment 2 tasks assume:
 - MVP end-to-end pipeline working (sensor → edge → ingestor → dashboard)
 - Cognito auth integrated in FastAPI and React
 - WebSocket live updates functional
-- TimescaleDB hypertable and basic schema in place
+- Native PostgreSQL partitioned schema and manual purge procedure in place (ADR-008)
 
 ---
 

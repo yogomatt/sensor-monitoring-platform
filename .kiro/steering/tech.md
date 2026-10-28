@@ -18,8 +18,8 @@ Multi-layer IoT platform: Edge (Raspberry Pi) → AWS IoT Core → Lambda/RDS �
 - **Fan-out Pattern**: Rules Engine multi-action routing (Lambda + S3 + Alerting)
 
 ### Storage Layer
-- **Operational Database**: TimescaleDB on RDS PostgreSQL (`db.t4g.micro`, Single-AZ)
-- **Time-series**: Hypertables with 7-day chunks, compression after 7 days
+- **Operational Database**: RDS PostgreSQL 15 (`db.t4g.micro`, Single-AZ)
+- **Time-series**: Native range partitions on `time`, 7-day UTC intervals; manual purge preserving at least 30 days (ADR-008). No compression or rollups
 - **Raw Archive**: S3 with Hive-style partitioning (`raw/{tenant_id}/year=/month=/day=/hour=`)
 - **Lifecycle**: S3 Standard (90 days) → Glacier Instant Retrieval
 
@@ -63,18 +63,18 @@ sensor_readings (
 )
 ```
 
-### Cloud (TimescaleDB/PostgreSQL)
+### Cloud (PostgreSQL)
 ```sql
 sensor_readings (time, tenant_id, device_id, sensor_type, value, unit, sequence_no)
-    — hypertable, 7-day chunks, unique(device_id, sequence_no, time)
+    — native range partitioning on time, 7-day intervals, unique(device_id, sequence_no, time)
 
 devices (device_id, tenant_id, display_name, location, firmware_version, registered_at, active)
 
 device_heartbeats (time, tenant_id, device_id, agent_version, buffer_depth, uptime_seconds)
-    — hypertable
+    — native range partitioning when implemented; deferred scope
 
 device_errors (time, tenant_id, device_id, sensor_type, error_code, message)
-    — hypertable
+    — native range partitioning when implemented; deferred scope
 
 alert_rules (id, tenant_id, device_id, sensor_type, condition, threshold, notification_channel, active)
     — Increment 2
@@ -129,15 +129,11 @@ aws cloudfront create-invalidation --distribution-id <dist-id> --paths "/*"
 # Connect to RDS
 psql -h <rds-endpoint> -U postgres -d iot_platform
 
-# Create hypertable
-SELECT create_hypertable('sensor_readings', 'time', chunk_time_interval => INTERVAL '7 days');
+# Inspect existing partitions in psql
+SELECT * FROM pg_partition_tree('sensor_readings');
 
-# Add compression policy
-ALTER TABLE sensor_readings SET (timescaledb.compress, timescaledb.compress_segmentby = 'tenant_id, device_id, sensor_type');
-SELECT add_compression_policy('sensor_readings', INTERVAL '7 days');
-
-# Add retention policy
-SELECT add_retention_policy('sensor_readings', INTERVAL '30 days');
+# Schema and partition creation: MVP T-2.4 / ADR-008.
+# Manual purge procedure: MVP T-2.6; no automatic deletion.
 ```
 
 ## Testing
@@ -174,7 +170,7 @@ python tests/load/generate_load.py --devices 10 --rate 100 --duration 3600
 All infrastructure uses AWS native services. No Terraform or CDK at MVP (manual provisioning). CDK introduced in Increment 3.
 
 Key services to provision:
-- RDS PostgreSQL with timescaledb extension
+- RDS PostgreSQL 15 with native range partitioning (ADR-008)
 - AWS IoT Core endpoint + device registry
 - Cognito User Pool (Essentials tier) with custom attribute `custom:tenant_id`
 - S3 buckets (raw archive, frontend static assets)

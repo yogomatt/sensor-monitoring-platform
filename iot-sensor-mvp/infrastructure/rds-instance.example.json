@@ -1,0 +1,37 @@
+{
+  "DBInstanceIdentifier": "iot-sensor-mvp-postgres",
+  "DBName": "iot_platform",
+  "Engine": "postgres",
+  "EngineVersion": "REPLACE_WITH_AVAILABLE_15_MINOR_VERSION",
+  "DBInstanceClass": "db.t4g.micro",
+  "AllocatedStorage": 20,
+  "StorageType": "gp3",
+  "StorageEncrypted": true,
+  "MultiAZ": false,
+  "Port": 5432,
+  "MasterUsername": "postgres",
+  "ManageMasterUserPassword": true,
+  "DBSubnetGroupName": "REPLACE_WITH_DB_SUBNET_GROUP",
+  "VpcSecurityGroupIds": [
+    "REPLACE_WITH_RESTRICTED_SECURITY_GROUP_ID"
+  ],
+  "PubliclyAccessible": true,
+  "AutoMinorVersionUpgrade": true,
+  "BackupRetentionPeriod": 1,
+  "CopyTagsToSnapshot": true,
+  "DeletionProtection": true,
+  "Tags": [
+    {
+      "Key": "Project",
+      "Value": "sensor-monitoring-platform"
+    },
+    {
+      "Key": "Increment",
+      "Value": "mvp"
+    },
+    {
+      "Key": "Task",
+      "Value": "T-1.3"
+    }
+  ]
+}

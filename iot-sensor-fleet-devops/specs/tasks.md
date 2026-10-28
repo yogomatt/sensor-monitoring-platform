@@ -3,11 +3,13 @@
 | Field | Value |
 |---|---|
 | **Spec type** | Feature Spec (Increment 3: Fleet Safety & DevOps) — Implementation phase |
-| **Version** | 1.0 |
-| **Date** | 2026-07-26 |
-| **Derived from** | `design.md` Fleet Safety & DevOps v1.0 |
+| **Version** | 1.1 |
+| **Date** | 2026-09-23 |
+| **Derived from** | `design.md` Fleet Safety & DevOps v1.1 |
 | **Depends on** | All MVP (Increment 1) and Enterprise (Increment 2) tasks completed and passing |
 | **Status** | Not started — all tasks pending |
+
+Storage scope follows [ADR-008](../../docs/adr/ADR-008-native-postgresql-storage.md): native PostgreSQL partitioning, manual purging, no compression or rollups in any increment.
 
 ---
 
@@ -23,7 +25,7 @@ Each task lists its **Requirement(s)**, **Depends on** (task IDs that must compl
 |---|---|---|---|---|
 | T-I3-1.1 | Create CDK project in separate repo; scaffold stacks (networking, database, compute, storage, auth, IoT, Lambda) | R-CICD-6 | — | pending |
 | T-I3-1.2 | Implement CDK networking stack: VPC, subnets, security groups, ALB; deploy to test environment | R-CICD-6 | T-I3-1.1 | pending |
-| T-I3-1.3 | Implement CDK database stack (RDS PostgreSQL + TimescaleDB); deploy to test environment | R-CICD-6 | T-I3-1.1 | pending |
+| T-I3-1.3 | Implement CDK database stack (RDS PostgreSQL with native partitioning per ADR-008; no compression, rollups, or automatic purge); deploy to test environment | R-CICD-6 | T-I3-1.1 | pending |
 | T-I3-1.4 | Implement CDK compute stack (ECS cluster, Fargate service, IAM roles); deploy to test environment | R-CICD-6 | T-I3-1.1 | pending |
 | T-I3-1.5 | Implement CDK storage stack (S3 frontend, raw archive, CloudFront); deploy to test environment | R-CICD-6 | T-I3-1.1 | pending |
 | T-I3-1.6 | Implement CDK auth stack (Cognito User Pool); deploy to test environment | R-CICD-6 | T-I3-1.1 | pending |

@@ -1,0 +1,21 @@
+{
+  "PoolName": "iot-sensor-mvp-users",
+  "UserPoolTier": "ESSENTIALS",
+  "DeletionProtection": "ACTIVE",
+  "Schema": [
+    {
+      "Name": "tenant_id",
+      "AttributeDataType": "String",
+      "Mutable": false,
+      "StringAttributeConstraints": {
+        "MinLength": "1",
+        "MaxLength": "2048"
+      }
+    }
+  ],
+  "UserPoolTags": {
+    "Project": "sensor-monitoring-platform",
+    "Increment": "mvp",
+    "Task": "T-1.4"
+  }
+}

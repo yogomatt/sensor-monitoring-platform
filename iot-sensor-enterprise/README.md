@@ -1,6 +1,6 @@
 # Enterprise Features
 
-Alerting, role-based access, rate limiting, storage optimization, and permanent raw archive.
+Alerting, role-based access, rate limiting, and permanent raw archive.
 
 Begin after the [MVP](../iot-sensor-mvp/README.md) is complete and stable.
 

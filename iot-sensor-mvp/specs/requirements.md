@@ -3,12 +3,14 @@
 | Field | Value |
 |---|---|
 | **Spec type** | Feature Spec (Increment 1: MVP) |
-| **Version** | 1.0 |
-| **Date** | 2026-07-26 |
+| **Version** | 1.1 |
+| **Date** | 2026-09-23 |
 | **Scope** | End-to-end sensor → dashboard pipeline, zero data loss, no alerting/fleet staging/complex auth |
 | **Owner** | Yogo (product owner) |
 | **Notation** | EARS (Easy Approach to Requirements Syntax) |
 | **Status** | In scope for MVP; see companion design.md and tasks.md |
+
+Storage scope follows [ADR-008](../../docs/adr/ADR-008-native-postgresql-storage.md): native PostgreSQL partitioning, manual purging, no compression or rollups in any increment.
 
 ---
 
@@ -49,7 +51,7 @@ Requirements are grouped by epic and tagged with an ID (`R-{area}-{n}`). Only re
 
 | ID | Requirement | Notes |
 |---|---|---|
-| R-STO-1 | THE SYSTEM SHALL retain raw sensor readings for at least 30 days | Retention policy on hypertable; purges older data automatically |
+| R-STO-1 | THE SYSTEM SHALL retain raw sensor readings for at least 30 days | ADR-008; measured from device reading time; operator-initiated purge only, preserving the most recent 30 days; no automatic expiry |
 
 ## Epic 4 — Multi-tenant data isolation (Storage/API)
 
@@ -93,7 +95,8 @@ Requirements are grouped by epic and tagged with an ID (`R-{area}-{n}`). Only re
 - Role-based access control (Owner/Admin/Viewer) — Increment 2
 - Alert rules and threshold-based notifications — Increment 2
 - Fleet-wide OTA updates and staged rollouts — Increment 3
-- Data retention policies beyond 30d raw — Increment 2
+- Compression and rollups — removed from the final product by ADR-008
+- Automatic operational database purging — future feature only if needed and separately specified
 - Rate limiting — Increment 2
 - CI/CD pipelines — Increment 3
 - Row-level security at database layer — deferred indefinitely

@@ -3,11 +3,13 @@
 | Field | Value |
 |---|---|
 | **Spec type** | Feature Spec (Increment 2: Enterprise) — Implementation phase |
-| **Version** | 1.0 |
-| **Date** | 2026-07-26 |
-| **Derived from** | `design.md` Enterprise v1.0 |
+| **Version** | 1.1 |
+| **Date** | 2026-09-23 |
+| **Derived from** | `design.md` Enterprise v1.1 |
 | **Depends on** | All MVP tasks (Increment 1) completed and passing |
 | **Status** | Not started — all tasks pending |
+
+Storage scope follows [ADR-008](../../docs/adr/ADR-008-native-postgresql-storage.md): native PostgreSQL partitioning, manual purging, no compression or rollups in any increment.
 
 ---
 
@@ -22,9 +24,6 @@ Each task lists its **Requirement(s)**, **Depends on** (task IDs that must compl
 | ID | Task | Requirement(s) | Depends on | Status |
 |---|---|---|---|---|
 | T-E2-1.1 | Create `alert_rules` table in RDS: (id, tenant_id, device_id, sensor_type, threshold_*, operator, channel_type, channel_target, active) | R-ALERT-1 | MVP complete | pending |
-| T-E2-1.2 | Create continuous aggregates: 1-min and 1-hour rollups on `sensor_readings` hypertable | R-STO-2, R-STO-3 | MVP complete | pending |
-| T-E2-1.3 | Apply 365-day retention to 1-min rollup, no retention to 1-hour rollup (forever) | R-STO-2, R-STO-3 | T-E2-1.2 | pending |
-| T-E2-1.4 | Apply compression policy to `sensor_readings`: compress chunks > 7 days old, segment by tenant/device/sensor | R-STO-5 | MVP complete | pending |
 | T-E2-1.5 | Provision S3 bucket for raw archive (separate from frontend bucket); enable Hive-style partition discovery | R-STO-6, R-STO-7 | — | pending |
 | T-E2-1.6 | Configure S3 lifecycle: Standard (0–90d) → Glacier Instant (90d–10y), no expiry | R-STO-6 | T-E2-1.5 | pending |
 | T-E2-1.7 | Provision SNS topic and SES sending limit per tenant (for alert dispatch) | R-ALERT-2 | — | pending |
@@ -49,10 +48,9 @@ Each task lists its **Requirement(s)**, **Depends on** (task IDs that must compl
 | ID | Task | Requirement(s) | Depends on | Status |
 |---|---|---|---|---|
 | T-E2-3.1 | Integrate slowapi rate limiter on FastAPI: 100 req/min per authenticated user by default | R-AUTH-5 | MVP complete | pending |
-| T-E2-3.2 | Implement query-routing logic: GET /api/v1/readings route to raw/1min/1hour table based on time span | R-STO-4 | T-E2-1.2, T-E2-1.3 | pending |
 | T-E2-3.3 | Implement alert rule CRUD endpoints: POST/GET/PUT/DELETE /api/v1/alert-rules (role-protected: Admin/Owner only) | R-ALERT-1 | T-E2-1.1, T-E2-2.4 | pending |
 | T-E2-3.4 | Update existing REST endpoints to respect rate limiter and role authorization | R-AUTH-2, R-AUTH-5 | T-E2-3.1, T-E2-2.4 | pending |
-| T-E2-3.5 | Deploy updated FastAPI to Fargate; verify rate limiter and role checks in logs | R-AUTH-2, R-AUTH-5 | T-E2-3.1, T-E2-3.2, T-E2-3.3, T-E2-3.4 | pending |
+| T-E2-3.5 | Deploy updated FastAPI to Fargate; verify rate limiter and role checks in logs | R-AUTH-2, R-AUTH-5 | T-E2-3.1, T-E2-3.3, T-E2-3.4 | pending |
 
 ---
 
@@ -62,9 +60,8 @@ Each task lists its **Requirement(s)**, **Depends on** (task IDs that must compl
 |---|---|---|---|---|
 | T-E2-4.1 | Update React dashboard to display user role and handle 403 Forbidden responses gracefully | R-AUTH-2 | MVP complete | pending |
 | T-E2-4.2 | Build alert rule management UI (CRUD for alert_rules, role-restricted to Admin/Owner) | R-ALERT-1 | T-E2-3.3 | pending |
-| T-E2-4.3 | Update dashboard charting logic to use query-routed endpoint (auto-selects 1min/1hour rollup) | R-STO-4 | T-E2-3.2 | pending |
 | T-E2-4.4 | Add visual indicator in dashboard when rate limit is approaching (429 handling) | R-AUTH-5 | T-E2-4.1 | pending |
-| T-E2-4.5 | Deploy updated React app to S3 + CloudFront invalidation | — | T-E2-4.1 through T-E2-4.4 | pending |
+| T-E2-4.5 | Deploy updated React app to S3 + CloudFront invalidation | — | T-E2-4.1, T-E2-4.2, T-E2-4.4 | pending |
 
 ---
 
@@ -74,17 +71,20 @@ Each task lists its **Requirement(s)**, **Depends on** (task IDs that must compl
 |---|---|---|---|---|
 | T-E2-5.1 | End-to-end test: verify role-based access control (Viewer cannot POST alert rules, Owner can) | R-AUTH-2 | T-E2-3.3, T-E2-4.2 | pending |
 | T-E2-5.2 | End-to-end test: alert threshold crossing, verify SNS notification dispatched | R-ALERT-2 | T-E2-2.1 | pending |
-| T-E2-5.3 | End-to-end test: query 100d of data, verify response uses 1-min rollup (not raw table) | R-STO-4 | T-E2-3.2 | pending |
 | T-E2-5.4 | Verify S3 raw archive receives every reading in correct Hive-style partition | R-STO-6, R-STO-7 | T-E2-2.2 | pending |
 | T-E2-5.5 | Load test: Athena query on raw archive (1M+ readings), verify sub-5s latency | R-STO-7 | T-E2-5.4 | pending |
 | T-E2-5.6 | Stress test: 500 req/sec for 5 min, verify rate limiter rejects excess and recovers gracefully | R-AUTH-5 | T-E2-3.1 | pending |
 | T-E2-5.7 | Document alert rule configuration (threshold operators, channel types, best practices) | R-ALERT-1 | T-E2-3.3 | pending |
-| T-E2-5.8 | Document continuous aggregate query patterns and cost implications | R-STO-4 | T-E2-3.2 | pending |
 
 ---
 
+## Retired tasks (ADR-008)
+
+T-E2-1.2, T-E2-1.3, T-E2-1.4, T-E2-3.2, T-E2-4.3, T-E2-5.3, and T-E2-5.8 are removed with R-STO-2 through R-STO-5. They covered rollups, rollup retention/query routing, compression, and associated verification/documentation. IDs remain reserved; these tasks are excluded from progress totals and are not completed or deferred work.
+
 ## Explicitly deferred (do not schedule without a new spec)
 
+- Automatic operational database purging — only if performance studies justify a future feature
 - Fleet OTA updates and staged rollouts — Increment 3
 - CI/CD automation pipelines — Increment 3
 - Multi-AZ RDS failover — indefinite
@@ -98,12 +98,12 @@ Each task lists its **Requirement(s)**, **Depends on** (task IDs that must compl
 
 | Wave | Total tasks | Done | In progress | Pending |
 |---|---|---|---|---|
-| 1 | 8 | 0 | 0 | 8 |
+| 1 | 5 | 0 | 0 | 5 |
 | 2 | 5 | 0 | 0 | 5 |
-| 3 | 5 | 0 | 0 | 5 |
-| 4 | 5 | 0 | 0 | 5 |
-| 5 | 8 | 0 | 0 | 8 |
-| **Total** | **31** | **0** | **0** | **31** |
+| 3 | 4 | 0 | 0 | 4 |
+| 4 | 4 | 0 | 0 | 4 |
+| 5 | 6 | 0 | 0 | 6 |
+| **Total** | **24** | **0** | **0** | **24** |
 
 ---
 

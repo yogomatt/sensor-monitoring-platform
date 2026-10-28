@@ -3,12 +3,14 @@
 | Field | Value |
 |---|---|
 | **Spec type** | Feature Spec (Increment 3: Fleet Safety & DevOps) |
-| **Version** | 1.0 |
-| **Date** | 2026-07-26 |
+| **Version** | 1.1 |
+| **Date** | 2026-09-23 |
 | **Scope** | Safe OTA updates, independent rollbacks, comprehensive CI/CD, end-to-end testing |
 | **Owner** | Yogo (product owner) |
 | **Notation** | EARS (Easy Approach to Requirements Syntax) |
 | **Status** | In scope for Increment 3; builds on MVP (Increment 1) and Enterprise (Increment 2) |
+
+Storage scope follows [ADR-008](../../docs/adr/ADR-008-native-postgresql-storage.md): native PostgreSQL partitioning, manual purging, no compression or rollups in any increment.
 
 ---
 
@@ -74,7 +76,7 @@ Each requirement follows EARS pattern. Increment 3 focuses on operational excell
 |---|---|---|
 | R-NFR-2 | THE SYSTEM SHALL introduce no new infrastructure component without a documented future upgrade trigger | Design principle; design.md lists upgrade conditions |
 | R-NFR-3 | THE SYSTEM SHALL prefer AWS-native managed services over third-party equivalents when cost and functionality are comparable | IoT Core, Greengrass, Fargate, Lambda, RDS, S3 all AWS-native |
-| R-NFR-4 | THE SYSTEM SHALL support scaling to at least 50 devices and approximately 700 tenants without requiring a redesign of the storage or auth layers | Continuous aggregates and application-layer tenant isolation proven sufficient |
+| R-NFR-4 | THE SYSTEM SHALL support scaling to at least 50 devices and approximately 700 tenants without requiring a redesign of the storage or auth layers | ADR-008; validate indexed raw-data query performance at measured retained volume and application-layer tenant isolation |
 
 ---
 
