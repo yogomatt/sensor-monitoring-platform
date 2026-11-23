@@ -77,7 +77,7 @@ Requirements are grouped by epic and tagged with an ID (`R-{area}-{n}`). Only re
 
 | ID | Requirement | Notes |
 |---|---|---|
-| R-FE-2 | THE SYSTEM SHALL serve the dashboard exclusively over HTTPS with a custom domain | CloudFront + ACM cert + S3 static host |
+| R-FE-2 | THE SYSTEM SHALL serve the dashboard exclusively over HTTPS using the temporary CloudFront hostname; acquire a custom domain and configure its ACM certificate after the application works as expected | CloudFront default certificate + S3 static host; custom domain and ACM certificate deferred |
 | R-FE-4 | WHEN a dashboard is open THE SYSTEM SHALL push live sensor updates to the client without requiring manual refresh | WebSocket connection to FastAPI; automatic push on new readings |
 
 ---

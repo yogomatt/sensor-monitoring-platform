@@ -1,0 +1,7 @@
+{
+  "Bucket": "iot-sensor-mvp-frontend-REPLACE_WITH_ACCOUNT_ID-REPLACE_WITH_REGION",
+  "CreateBucketConfiguration": {
+    "LocationConstraint": "REPLACE_WITH_REGION"
+  },
+  "ObjectOwnership": "BucketOwnerEnforced"
+}

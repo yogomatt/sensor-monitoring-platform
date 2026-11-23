@@ -1,5 +1,70 @@
 # MVP infrastructure
 
+## Frontend S3 bucket — T-1.5
+
+Traceability: [T-1.5](../specs/tasks.md) → R-FE-2 → [ADR-006](../../docs/adr/ADR-006-frontend.md); hosting follows [MVP design §2.7–2.8](../specs/design.md).
+
+The frontend bucket is `iot-sensor-mvp-frontend-129896631584-us-east-2`, in account `129896631584`, region `us-east-2`, using profile `sensor-monitoring`. Provisioned and verified 2026-11-20 using the manual provisioning path allowed by design §2.8. Live readback confirmed the region, ownership controls, all four public access blocks, encryption, project tags, and HTTPS policy; policy status reported `IsPublic=false`. T-1.5 is complete, recorded 2026-11-21 after approval of the task split below. The authoritative status is in `specs/tasks.md`.
+
+The bucket is intended as a private S3 REST origin for T-1.8. Its configuration blocks all public access, disables ACLs (`BucketOwnerEnforced`), uses SSE-S3 encryption (`AES256`), and denies non-HTTPS access for non-service principals. Tags identify `Project=sensor-monitoring-platform`, `Increment=mvp`, and `Task=T-1.5`. The HTTPS deny exempts direct AWS service principals to avoid relying on transport context redacted from service-to-service requests; it grants no access. T-1.8 must grant its specific CloudFront distribution read access through origin access control. Website hosting and public object reads are not required for this origin.
+
+### Reproduce the bucket configuration
+
+First verify the target account with `aws sts get-caller-identity --profile sensor-monitoring`, then inspect `aws s3api list-buckets --profile sensor-monitoring` to avoid creating duplicate resources. Copy [frontend-bucket.example.json](frontend-bucket.example.json) and [frontend-bucket-policy.example.json](frontend-bucket-policy.example.json) to temporary files, replace both placeholders with the intended account and region, and inspect the resulting names and policy resources. The bucket request's `LocationConstraint` applies to this `us-east-2` deployment; omit `CreateBucketConfiguration` for `us-east-1`.
+
+Using the prepared request files, run these commands from an authenticated shell:
+
+```bash
+export AWS_PROFILE=sensor-monitoring
+export AWS_REGION=us-east-2
+export T15_BUCKET=iot-sensor-mvp-frontend-129896631584-us-east-2
+export T15_ACCOUNT=129896631584
+aws s3api create-bucket --cli-input-json file:///tmp/t15-frontend-bucket.example.json
+aws s3api put-public-access-block --bucket "$T15_BUCKET" \
+  --expected-bucket-owner "$T15_ACCOUNT" \
+  --public-access-block-configuration BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+aws s3api put-bucket-encryption --bucket "$T15_BUCKET" \
+  --expected-bucket-owner "$T15_ACCOUNT" \
+  --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+aws s3api put-bucket-tagging --bucket "$T15_BUCKET" \
+  --expected-bucket-owner "$T15_ACCOUNT" \
+  --tagging 'TagSet=[{Key=Project,Value=sensor-monitoring-platform},{Key=Increment,Value=mvp},{Key=Task,Value=T-1.5}]'
+aws s3api put-bucket-policy --bucket "$T15_BUCKET" \
+  --expected-bucket-owner "$T15_ACCOUNT" \
+  --policy file:///tmp/t15-frontend-bucket-policy.example.json
+```
+
+Read back the location, ownership controls, public access block, encryption, tags, policy, and policy status using their corresponding `s3api get-*` operations before recording verification. S3 storage and request usage incur [standard S3 charges](https://aws.amazon.com/s3/pricing/).
+
+### CloudFront logging dependency
+
+Approved scope clarification (2026-11-21): T-1.5 owns the private frontend bucket. T-1.8 owns creation of a separate private S3 bucket for CloudFront standard access logs, logging activation on its distribution, and verification of delivered logs. T-1.8 is complete. The separate log bucket is provisioned and actual log delivery was verified.
+
+References: [S3 security guidance](https://docs.aws.amazon.com/AmazonS3/latest/userguide/security-best-practices.html), [S3 policy condition examples](https://docs.aws.amazon.com/AmazonS3/latest/userguide/amazon-s3-policy-keys.html), [CloudFront standard logging](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/standard-logging.html).
+
+## CloudFront hosting — T-1.8
+
+Traceability: [T-1.8](../specs/tasks.md) → R-FE-2 → [ADR-006](../../docs/adr/ADR-006-frontend.md). Distribution `E1GYZA65O051YD` is deployed at `https://d1kwo1lcyg6g2c.cloudfront.net/`, using the default CloudFront certificate. Origin access control `E17VPILPEH9CWF` signs requests with SigV4. The frontend bucket policy grants read access only to this distribution. HTTPS, HTTP redirect, SPA fallback, and anonymous origin denial were verified with a temporary probe, which was removed; the application has not yet been deployed.
+
+The separate log bucket `iot-sensor-mvp-cloudfront-logs-129896631584-us-east-2` uses SSE-S3, BucketOwnerEnforced, all public access blocks, and project/increment/task tags. Its delivery policy restricts the delivery service by source account and exact delivery-source ARN. CloudFront standard logging v2 delivery `UEe2cAfMm6UIO6La` selects fields excluding query strings and cookies. A delivered SSE-S3 log object, `AWSLogs/129896631584/CloudFront/E1GYZA65O051YD.2026-11-21-06.5bdd9cdc.gz`, was inspected on 2026-11-21; it recorded the HTTPS fallback and HTTP redirect probes without query-string or cookie fields.
+
+For a separate environment, review and replace deployment-specific IDs in [distribution](cloudfront-distribution.example.json), [origin bucket policy](cloudfront-frontend-bucket-policy.example.json), and [delivery](cloudfront-log-delivery.example.json) templates. Create a private encrypted log bucket and a SigV4 origin access control, create the distribution, and scope the origin policy to its ARN. Standard logging v2 uses CloudWatch Logs in `us-east-1`: create a delivery source for the distribution and `ACCESS_LOGS`, create an S3 delivery destination with JSON output, and create a delivery using the selected fields in the template. Inspect existing resources before creating duplicates. For this deployment, check the delivery and log objects with:
+
+```bash
+aws logs get-delivery --id UEe2cAfMm6UIO6La --region us-east-1 --profile sensor-monitoring
+aws s3api list-objects-v2 --bucket iot-sensor-mvp-cloudfront-logs-129896631584-us-east-2 --region us-east-2 --profile sensor-monitoring
+```
+
+For another deployment, inspect an actual delivered record and confirm the selected fields before recording completion. Domain acquisition and an ACM certificate are deferred until the application works as expected.
+
+## IoT foundation — T-1.7
+
+Traceability: [T-1.7](../specs/tasks.md) → R-EDGE-1, R-ING-1 → [ADR-002](../../docs/adr/ADR-002-edge-mqtt-sqlite.md) and [ADR-003](../../docs/adr/ADR-003-ingestion-kinesis-qos-dedup.md). The account `129896631584` AWS IoT Data-ATS endpoint in `us-east-2`, verified using profile `sensor-monitoring`, is `a30cgti1za5vir-ats.iot.us-east-2.amazonaws.com`. AWS IoT manages the certificate registry; no separate store is required.
+
+For each device, render [iot-thing.example.json](iot-thing.example.json) and [iot-device-policy.example.json](iot-device-policy.example.json) with its unique device ID and tenant ID. Validate each replacement against `[A-Za-z0-9:_-]+`; never insert wildcards, slashes, or policy variables. Inspect the rendered policy, create the thing with `aws iot create-thing --cli-input-json file://<rendered-thing.json>`, and create a device-specific policy from the rendered policy document. Securely provision or register a certificate without exposing its private key; attach only the device policy to the certificate and attach the thing exclusively to that certificate. Activate the certificate only after verifying attachments. Connect with the device ID as MQTT client ID and the ATS endpoint above. Do not attach broader policies. The template grants no subscribe or receive permission.
+
+Policy inspection verified that the assigned client and tenant/device topic subtree match, while another client, device, or tenant does not. This was inspection, not a live authorization test. No device certificates, private keys, policies, or rules were created. Ingestion routing remains T-2.7.
+
 ## Cognito User Pool — T-1.4
 
 Traceability: [T-1.4](../specs/tasks.md) → R-AUTH-1, R-TEN-3 → [ADR-005](../../docs/adr/ADR-005-api-layer.md); tenant-claim use follows [MVP design §2.5](../specs/design.md).

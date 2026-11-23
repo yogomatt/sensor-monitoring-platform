@@ -1,0 +1,32 @@
+{
+  "CallerReference": "iot-sensor-mvp-t-1-8",
+  "Comment": "T-1.8 MVP frontend",
+  "Enabled": true,
+  "DefaultRootObject": "index.html",
+  "Origins": {
+    "Quantity": 1,
+    "Items": [{
+      "Id": "frontend-s3",
+      "DomainName": "iot-sensor-mvp-frontend-129896631584-us-east-2.s3.us-east-2.amazonaws.com",
+      "S3OriginConfig": {"OriginAccessIdentity": ""},
+      "OriginAccessControlId": "E17VPILPEH9CWF"
+    }]
+  },
+  "DefaultCacheBehavior": {
+    "TargetOriginId": "frontend-s3",
+    "ViewerProtocolPolicy": "redirect-to-https",
+    "AllowedMethods": {"Quantity": 2, "Items": ["GET", "HEAD"], "CachedMethods": {"Quantity": 2, "Items": ["GET", "HEAD"]}},
+    "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+    "Compress": true
+  },
+  "CustomErrorResponses": {
+    "Quantity": 2,
+    "Items": [
+      {"ErrorCode": 403, "ResponsePagePath": "/index.html", "ResponseCode": "200", "ErrorCachingMinTTL": 0},
+      {"ErrorCode": 404, "ResponsePagePath": "/index.html", "ResponseCode": "200", "ErrorCachingMinTTL": 0}
+    ]
+  },
+  "ViewerCertificate": {"CloudFrontDefaultCertificate": true},
+  "HttpVersion": "http2and3",
+  "IsIPV6Enabled": true
+}

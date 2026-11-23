@@ -1,0 +1,8 @@
+{
+  "thingName": "DEVICE_ID",
+  "attributePayload": {
+    "attributes": {
+      "tenant_id": "TENANT_ID"
+    }
+  }
+}

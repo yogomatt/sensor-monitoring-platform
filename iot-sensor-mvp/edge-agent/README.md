@@ -9,6 +9,8 @@ The MVP edge agent contains the SQLite buffer schema delivered for T-1.1 and MQT
 
 Keep component documentation in this README. Record task completion in the [MVP task plan](../specs/tasks.md); do not create standalone task or completion reports.
 
+The T-1.6 entrypoint can be run with `python3 src/main.py`. The polling loop is assigned to T-2.1.
+
 ## MQTT payloads (T-1.2)
 
 Install dependencies with `python3 -m pip install -r requirements.txt` from this component directory. Add `src` to `PYTHONPATH` to import `mqtt.schemas`.
