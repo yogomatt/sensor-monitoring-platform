@@ -6,7 +6,7 @@
 | **Version** | 1.1 |
 | **Date** | 2026-09-23 |
 | **Derived from** | `design.md` MVP v1.1 |
-| **Status** | In progress — T-1.1 through T-1.4 done; 26 tasks pending |
+| **Status** | In progress — T-1.1 through T-1.8 done; 22 tasks pending |
 
 Storage scope follows [ADR-008](../../docs/adr/ADR-008-native-postgresql-storage.md): native PostgreSQL partitioning, manual purging, no compression or rollups in any increment.
 
@@ -28,10 +28,10 @@ Wave structure prioritizes parallelism: Wave 1 can start immediately; Wave 2 wai
 | T-1.2 | Implement MQTT payload Pydantic schemas (reading, heartbeat) for topic validation | R-EDGE-1, R-EDGE-7 | — | done |
 | T-1.3 | Provision RDS PostgreSQL instance (`db.t4g.micro`, Single-AZ, PostgreSQL 15; native partitioning per ADR-008) | R-STO-1 | — | done |
 | T-1.4 | Create Cognito User Pool (Essentials tier) with custom attribute `custom:tenant_id` | R-AUTH-1, R-TEN-3 | — | done |
-| T-1.5 | Provision S3 bucket for frontend static assets + enable CloudFront access logging | R-FE-2 | — | pending |
-| T-1.6 | Scaffold three Git repos: edge-agent, backend (FastAPI), frontend (React) with basic folder structure | — | — | pending |
-| T-1.7 | Provision AWS IoT Core MQTT endpoint, device X.509 certificate store, topic ACL templates | R-EDGE-1, R-ING-1 | — | pending |
-| T-1.8 | Create CloudFront distribution (S3 origin, ACM certificate, custom domain, SPA fallback) | R-FE-2 | T-1.5 | pending |
+| T-1.5 | Provision private S3 bucket for frontend static assets | R-FE-2 | — | done |
+| T-1.6 | Scaffold three Git repos: edge-agent, backend (FastAPI), frontend (React) with basic folder structure | R-EDGE-1, R-AUTH-1, R-FE-2 | — | done |
+| T-1.7 | Provision AWS IoT Core MQTT endpoint, device X.509 certificate store, topic ACL templates | R-EDGE-1, R-ING-1 | — | done |
+| T-1.8 | Create CloudFront distribution (S3 origin, default HTTPS hostname and certificate, SPA fallback); provision a separate private S3 log bucket, enable standard access logging, and verify delivery | R-FE-2 | T-1.5 | done |
 
 ---
 
@@ -70,7 +70,7 @@ Wave structure prioritizes parallelism: Wave 1 can start immediately; Wave 2 wai
 | T-4.1 | Scaffold React app with Cognito login integration (redirect flow, sessionStorage for JWT) | R-AUTH-1 | T-1.4, T-1.6 | pending |
 | T-4.2 | Implement dashboard page: device list + live reading chart (WebSocket-fed, Recharts) | R-FE-4 | T-4.1, T-3.5 | pending |
 | T-4.3 | Configure GitHub Actions workflow to auto-build and sync React app to S3 on merge to main | — | T-1.6 | pending |
-| T-4.4 | Build and deploy frontend; verify CloudFront serves React app over HTTPS with custom domain | R-FE-2 | T-1.8, T-4.2, T-4.3 | pending |
+| T-4.4 | Build and deploy frontend; verify CloudFront serves React app over HTTPS using the temporary CloudFront hostname | R-FE-2 | T-1.8, T-4.2, T-4.3 | pending |
 
 ---
 
@@ -88,6 +88,7 @@ Wave structure prioritizes parallelism: Wave 1 can start immediately; Wave 2 wai
 ## Explicitly deferred (do not schedule without a new spec)
 
 Items in `design.md` § 4 (MVP-specific design decisions):
+- Acquire a custom domain and configure its ACM certificate after the application works as expected (approved R-FE-2 scope change, 2026-11-21)
 - Automatic operational database purging — only if needed under a future approved spec; compression and rollups are removed from the product, not deferred
 - S3 raw archive with Hive-style partitioning — Increment 2
 - Alert rule evaluation and SNS/SES dispatch — Increment 2
@@ -104,24 +105,30 @@ Items in `design.md` § 4 (MVP-specific design decisions):
 
 | Wave | Total tasks | Done | In progress | Pending | Blocked |
 |---|---|---|---|---|---|
-| 1 | 8 | 4 | 0 | 4 | 0 |
+| 1 | 8 | 8 | 0 | 0 | 0 |
 | 2 | 7 | 0 | 0 | 7 | 0 |
 | 3 | 7 | 0 | 0 | 7 | 0 |
 | 4 | 4 | 0 | 0 | 4 | 0 |
 | 5 | 4 | 0 | 0 | 4 | 0 |
-| **Total** | **30** | **4** | **0** | **26** | **0** |
+| **Total** | **30** | **8** | **0** | **22** | **0** |
 
 ---
 
 ## Next steps
 
+- T-1.8 done (2026-11-21): distribution deployed and HTTPS, redirect, private origin, and SPA fallback verified with a temporary probe that was removed. An actual standard logging v2 record was delivered and inspected; it excludes query strings and cookies. T-4.4 has its T-1.8 prerequisite satisfied and remains pending T-4.2 and T-4.3. See [infrastructure documentation](../infrastructure/README.md).
+
+- T-1.6 done (2026-11-21): initialized independent local repositories and minimal edge, FastAPI, and React scaffolds while preserving existing edge code. Python 3.11 imports and the React production build passed. T-4.1 and T-4.3 are now unblocked and remain pending.
+
+- T-1.7 done (2026-11-21): verified the account’s `us-east-2` Data-ATS endpoint and inspected device-scoped policy templates, including denial by absence of a matching allow for other devices and tenants. No certificates or keys were generated. See [infrastructure documentation](../infrastructure/README.md). T-2.7 is now unblocked and remains pending.
+
+- T-1.5 done (completion recorded 2026-11-21): frontend bucket `iot-sensor-mvp-frontend-129896631584-us-east-2` was provisioned and verified 2026-11-20 in account `129896631584`, region `us-east-2`, using profile `sensor-monitoring`. Live readback confirmed SSE-S3 (`AES256`), `BucketOwnerEnforced`, all four public access blocks, `IsPublic=false`, HTTPS enforcement for non-service principals, and project/increment/task tags. JSON request templates and reproduction steps are in [infrastructure documentation](../infrastructure/README.md). Approved scope clarification (2026-11-21): move CloudFront logging activation and delivery verification to T-1.8, which also provisions a separate private S3 log bucket. Logging was subsequently configured under T-1.8. T-1.8 is complete.
 - T-1.4 done (completion recorded 2026-10-25): account `129896631584`, profile `sensor-monitoring`, region `us-east-2`; Cognito User Pool `iot-sensor-mvp-users` (`us-east-2_Jon5KZgmo`). Live `describe-user-pool` verification confirmed Essentials tier, active deletion protection, and immutable string `custom:tenant_id` with length 1–2048. Resource tags are `Project=sensor-monitoring-platform`, `Increment=mvp`, and `Task=T-1.4`. No users, app clients, hosted-login configuration, or MFA policy were created. See [infrastructure documentation](../infrastructure/README.md). T-3.2 is now unblocked; T-4.1 has its T-1.4 prerequisite satisfied but remains pending T-1.6.
 - T-1.3 done (completion recorded 2026-10-12): account `129896631584`, profile `sensor-monitoring`, region `us-east-2`; instance `iot-sensor-mvp-postgres`, endpoint `iot-sensor-mvp-postgres.cl26wmy4ay8s.us-east-2.rds.amazonaws.com:5432`, database `iot_platform`. Verified AWS status `available`, PostgreSQL 15.19, `db.t4g.micro`, Single-AZ, encrypted 20 GiB gp3, active managed secret, deletion protection, and no pending modifications. Live read-only SQL checks passed over hostname-validated TLS: PostgreSQL 15.19, native partitioning available, only `plpgsql` installed. Parameter group `default.postgres15` enforces `rds.force_ssl=1`. Dedicated security group `sg-00305a39ffce388b9` permits TCP 5432 only from the operator IP; subnet group `iot-sensor-mvp-postgres` uses the verified public subnets. One-day backup retention was accepted after the Free Plan rejected seven days; sensor-row retention is unchanged. See [infrastructure documentation](../infrastructure/README.md). T-2.4 and T-2.5 are now unblocked and remain pending; T-2.6 still awaits T-2.4.
 - T-1.2 complete: Pydantic reading and heartbeat contracts plus topic/payload matching implemented in `edge-agent/src/mqtt/schemas.py`. Approved clarification: heartbeats require `sequence_no` for the same deduplication purpose as readings (R-EDGE-7); recorded in design §2.1. Temporary validation probes passed for required fields, JSON round-trips, malformed payloads, topic mismatches, and SQLite reading compatibility. Sequence allocation remains T-2.2; heartbeat emission remains deferred.
 - T-2.1 is now unblocked by completion of T-1.1 and T-1.2. T-2.2 was already unblocked by T-1.1; both remain pending.
-- [ ] Assign owners to remaining ready Wave 1 tasks
 - [ ] Assign owners to Wave 2 tasks as their listed dependencies complete (T-2.1, T-2.2, T-2.4, and T-2.5 are ready)
 - [ ] Update task status as work proceeds; do not let this file drift from actual repo state
-- [ ] On Wave 1 completion, kick off Waves 2–5 in sequence
+- [ ] Schedule subsequent tasks when their listed dependencies are met
 
 </content>

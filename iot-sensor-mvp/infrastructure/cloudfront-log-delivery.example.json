@@ -1,0 +1,5 @@
+{
+  "deliverySourceName": "iot-sensor-mvp-cloudfront",
+  "deliveryDestinationArn": "arn:aws:logs:us-east-1:129896631584:delivery-destination:iot-sensor-mvp-cloudfront-s3",
+  "recordFields": ["date", "time", "x-edge-location", "sc-bytes", "c-ip", "cs-method", "cs(Host)", "cs-uri-stem", "sc-status", "x-edge-result-type", "x-edge-request-id", "x-host-header", "cs-protocol", "ssl-protocol", "ssl-cipher"]
+}

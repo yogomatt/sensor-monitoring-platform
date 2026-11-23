@@ -193,7 +193,7 @@ async def get_readings(
 **Requirements addressed:** R-AUTH-1, R-FE-2, R-FE-4
 
 - React + Recharts, served from S3, fronted by CloudFront
-- CloudFront provides HTTPS + custom domain + SPA path fallback
+- CloudFront provides HTTPS using its default hostname and certificate + SPA path fallback; acquire a custom domain and configure its ACM certificate after the application works as expected
 - Cognito login flow: redirect to login → receive JWT → store in sessionStorage
 - Dashboard connects to `/ws/updates` with JWT query param; displays live readings in real-time chart
 
@@ -212,10 +212,15 @@ Infrastructure provisioned manually or via CDK (state tracking only; no automate
 - **IoT Rules Engine:** route `iot/{tenant_id}/{device_id}/sensors/*` to Lambda ingestor
 - **Lambda:** ingestor function (Python runtime, sync trigger on Rules Engine)
 - **RDS:** PostgreSQL 15 with native range partitioning (no TimescaleDB extension), `db.t4g.micro`, Single-AZ, public subnet for simplicity
-- **S3:** one bucket for frontend static assets (raw archive deferred to Increment 2)
-- **CloudFront:** distribution pointing to S3, ACM certificate, custom domain
+- **S3:** one private bucket for frontend static assets and a separate private bucket for CloudFront standard access logs (raw archive deferred to Increment 2)
+- **CloudFront:** distribution pointing to S3 using the default CloudFront HTTPS hostname and certificate; T-1.8 provisions the separate private log bucket, enables standard access logging, and verifies log delivery
+
 - **Cognito:** User Pool with custom attribute `custom:tenant_id`
 - **ECS/Fargate:** cluster + service, 1 task, 0.5 CPU / 1 GB memory, run in public subnet with ALB
+
+Approved scope change (2026-11-21), tracing T-1.8 → R-FE-2 → ADR-006: use the temporary CloudFront hostname with HTTPS; acquisition of a custom domain and configuration of its ACM certificate are deferred until the application works as expected.
+
+Approved scope clarification (2026-11-21), tracing T-1.5/T-1.8 → R-FE-2 → ADR-006: T-1.5 owns frontend bucket provisioning; T-1.8 owns the log bucket and logging activation/verification alongside distribution creation. This removes the logging dependency on a distribution that does not exist during T-1.5.
 
 ---
 
